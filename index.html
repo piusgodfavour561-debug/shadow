@@ -1,0 +1,362 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SHADOW VOICE CHANGER</title>
+
+<style>
+* {
+  box-sizing: border-box;
+  font-family: Arial, sans-serif;
+}
+
+body {
+  margin: 0;
+  background: #090914;
+  color: white;
+  text-align: center;
+}
+
+header {
+  padding: 25px 10px;
+  background: linear-gradient(135deg,#16102c,#432080);
+}
+
+header h1 {
+  color: #c49aff;
+  letter-spacing: 2px;
+}
+
+.container {
+  max-width: 500px;
+  margin: 25px auto;
+  padding: 20px;
+}
+
+.panel {
+  background: #171729;
+  border: 1px solid #38305d;
+  border-radius: 16px;
+  padding: 20px;
+  margin-bottom: 18px;
+}
+
+button, select {
+  border: none;
+  border-radius: 9px;
+  padding: 13px;
+  margin: 6px;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+button {
+  background: #8b5cf6;
+  color: white;
+}
+
+button:hover {
+  background: #a78bfa;
+}
+
+button:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+select {
+  background: #282843;
+  color: white;
+  width: 90%;
+}
+
+input[type=range] {
+  width: 90%;
+}
+
+.status {
+  color: #a78bfa;
+  margin: 15px;
+}
+
+audio {
+  width: 100%;
+  margin-top: 15px;
+}
+
+small {
+  color: #aaa;
+}
+
+</style>
+</head>
+
+<body>
+
+<header>
+<h1>👻 SHADOW VOICE CHANGER</h1>
+<p>REAL-TIME VOICE EFFECT STUDIO</p>
+</header>
+
+<div class="container">
+
+<div class="panel">
+<h2>🎙️ Microphone</h2>
+<p class="status" id="status">Microphone not connected</p>
+
+<button id="start">START MICROPHONE</button>
+<button id="stop" disabled>STOP</button>
+</div>
+
+<div class="panel">
+<h2>🎭 Select Voice</h2>
+
+<select id="effect">
+<option value="normal">Normal Voice</option>
+<option value="male">Deep Male Style</option>
+<option value="female">Female Style</option>
+<option value="child">Child-like Voice</option>
+<option value="monster">Monster Voice</option>
+<option value="robot">Robot Voice</option>
+</select>
+
+<h3>🎚️ Pitch Control</h3>
+<input type="range" id="pitch"
+min="0.5" max="2" step="0.05" value="1">
+<p id="pitchValue">1.00x</p>
+
+<button id="monitor">ENABLE LIVE MONITOR</button>
+</div>
+
+<div class="panel">
+<h2>🔴 Recording Studio</h2>
+
+<button id="record" disabled>START RECORDING</button>
+<button id="finish" disabled>STOP RECORDING</button>
+
+<p id="recordStatus">Not recording</p>
+
+<audio id="player" controls></audio>
+
+<br>
+
+<a id="download" style="display:none;color:#c49aff">
+DOWNLOAD VOICE
+</a>
+</div>
+
+</div>
+
+<script>
+let audioContext;
+let stream;
+let source;
+let pitchNode;
+let filter;
+let gain;
+let recorder;
+let chunks = [];
+let monitorOn = false;
+
+const status = document.getElementById("status");
+const effect = document.getElementById("effect");
+const pitch = document.getElementById("pitch");
+const pitchValue = document.getElementById("pitchValue");
+const player = document.getElementById("player");
+
+async function startMic() {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: true
+    });
+
+    audioContext = new AudioContext();
+
+    await audioContext.resume();
+
+    source = audioContext.createMediaStreamSource(stream);
+
+    filter = audioContext.createBiquadFilter();
+    filter.type = "lowpass";
+    filter.frequency.value = 12000;
+
+    gain = audioContext.createGain();
+    gain.gain.value = 1;
+
+    source.connect(filter);
+    filter.connect(gain);
+
+    pitchNode = audioContext.createBiquadFilter();
+    pitchNode.type = "allpass";
+
+    gain.connect(pitchNode);
+
+    status.textContent = "🟢 Microphone connected";
+
+    document.getElementById("start").disabled = true;
+    document.getElementById("stop").disabled = false;
+    document.getElementById("record").disabled = false;
+
+    updateEffect();
+
+  } catch(error) {
+    status.textContent = "Microphone permission denied or unavailable";
+    alert(error.message);
+  }
+}
+
+function updateEffect() {
+  if (!audioContext) return;
+
+  let selected = effect.value;
+
+  let values = {
+    normal: [1, 12000],
+    male: [0.85, 5000],
+    female: [1.25, 9000],
+    child: [1.5, 11000],
+    monster: [0.55, 1800],
+    robot: [1, 2500]
+  };
+
+  let settings = values[selected];
+
+  pitch.value = settings[0];
+  pitchValue.textContent = settings[0].toFixed(2) + "x";
+
+  filter.frequency.setTargetAtTime(
+    settings[1],
+    audioContext.currentTime,
+    0.05
+  );
+
+  gain.gain.setTargetAtTime(
+    selected === "monster" ? 1.5 : 1,
+    audioContext.currentTime,
+    0.05
+  );
+}
+
+function makeOutput() {
+  const destination =
+    audioContext.createMediaStreamDestination();
+
+  pitchNode.connect(destination);
+
+  return destination.stream;
+}
+
+effect.addEventListener("change", updateEffect);
+
+pitch.addEventListener("input", () => {
+  pitchValue.textContent =
+    Number(pitch.value).toFixed(2) + "x";
+});
+
+document.getElementById("monitor")
+.addEventListener("click", () => {
+  if (!audioContext) return;
+
+  if (!monitorOn) {
+    pitchNode.connect(audioContext.destination);
+    monitorOn = true;
+    document.getElementById("monitor").textContent =
+      "DISABLE LIVE MONITOR";
+  } else {
+    pitchNode.disconnect(audioContext.destination);
+    monitorOn = false;
+    document.getElementById("monitor").textContent =
+      "ENABLE LIVE MONITOR";
+  }
+});
+
+document.getElementById("start")
+.addEventListener("click", startMic);
+
+document.getElementById("stop")
+.addEventListener("click", () => {
+  if (recorder && recorder.state !== "inactive") {
+    recorder.stop();
+  }
+
+  stream?.getTracks().forEach(track => track.stop());
+
+  audioContext?.close();
+
+  audioContext = null;
+  stream = null;
+  source = null;
+  pitchNode = null;
+  filter = null;
+  gain = null;
+
+  status.textContent = "Microphone stopped";
+
+  document.getElementById("start").disabled = false;
+  document.getElementById("stop").disabled = true;
+  document.getElementById("record").disabled = true;
+  document.getElementById("monitor").textContent =
+    "ENABLE LIVE MONITOR";
+
+  monitorOn = false;
+});
+
+document.getElementById("record")
+.addEventListener("click", () => {
+  chunks = [];
+
+  const output = makeOutput();
+
+  let mime = MediaRecorder.isTypeSupported(
+    "audio/webm;codecs=opus"
+  ) ? "audio/webm;codecs=opus" : "audio/webm";
+
+  recorder = new MediaRecorder(output, {
+    mimeType: mime
+  });
+
+  recorder.ondataavailable = event => {
+    if (event.data.size > 0) chunks.push(event.data);
+  };
+
+  recorder.onstop = () => {
+    const blob = new Blob(chunks, {type: recorder.mimeType});
+    const url = URL.createObjectURL(blob);
+
+    player.src = url;
+
+    const download = document.getElementById("download");
+    download.href = url;
+    download.download = "shadow-voice.webm";
+    download.style.display = "inline-block";
+    download.textContent = "⬇️ DOWNLOAD RECORDING";
+
+    document.getElementById("recordStatus").textContent =
+      "Recording ready!";
+  };
+
+  recorder.start();
+
+  document.getElementById("record").disabled = true;
+  document.getElementById("finish").disabled = false;
+
+  document.getElementById("recordStatus").textContent =
+    "🔴 Recording...";
+});
+
+document.getElementById("finish")
+.addEventListener("click", () => {
+  if (recorder && recorder.state === "recording") {
+    recorder.stop();
+  }
+
+  document.getElementById("record").disabled = false;
+  document.getElementById("finish").disabled = true;
+});
+</script>
+
+</body>
+</html>
+￼Enter
